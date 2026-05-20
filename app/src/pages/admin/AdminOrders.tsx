@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { mockOrders } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,14 +13,19 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Edit
+  Edit,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Order } from '@/types';
 
 export default function AdminOrders() {
-  const [orders, setOrders] = useState(mockOrders);
-  const [selectedOrder, setSelectedOrder] = useState<typeof mockOrders[0] | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
   const [editData, setEditData] = useState({
     status: '',
     scheduled_date: '',
@@ -33,6 +37,25 @@ export default function AdminOrders() {
     manager_notes: '',
   });
 
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/orders');
+      if (!response.ok) throw new Error('Помилка завантаження');
+      const data = await response.json();
+      setOrders(data);
+    } catch (error) {
+      console.error(error);
+      toast.error('Не вдалося завантажити замовлення');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const newOrders = orders.filter(o => o.status === 'new');
   const scheduledOrders = orders.filter(o => o.status === 'scheduled');
   const inProgressOrders = orders.filter(o => o.status === 'in_progress');
@@ -40,17 +63,12 @@ export default function AdminOrders() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'new':
-        return <AlertCircle className="h-5 w-5 text-amber-500" />;
-      case 'scheduled':
-        return <Calendar className="h-5 w-5 text-blue-500" />;
-      case 'in_progress':
-        return <Clock className="h-5 w-5 text-purple-500" />;
+      case 'new': return <AlertCircle className="h-5 w-5 text-amber-500" />;
+      case 'scheduled': return <Calendar className="h-5 w-5 text-blue-500" />;
+      case 'in_progress': return <Clock className="h-5 w-5 text-purple-500" />;
       case 'completed':
-      case 'paid':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
+      case 'paid': return <CheckCircle className="h-5 w-5 text-green-500" />;
+      default: return <AlertCircle className="h-5 w-5 text-gray-500" />;
     }
   };
 
@@ -68,26 +86,26 @@ export default function AdminOrders() {
 
   const getStatusClass = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'bg-amber-100 text-amber-700';
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-700';
-      case 'in_progress':
-        return 'bg-purple-100 text-purple-700';
-      case 'completed':
-        return 'bg-green-100 text-green-700';
-      case 'paid':
-        return 'bg-green-600 text-white';
-      default:
-        return 'bg-gray-100 text-gray-700';
+      case 'new': return 'bg-amber-100 text-amber-700';
+      case 'scheduled': return 'bg-blue-100 text-blue-700';
+      case 'in_progress': return 'bg-purple-100 text-purple-700';
+      case 'completed': return 'bg-green-100 text-green-700';
+      case 'paid': return 'bg-green-600 text-white';
+      default: return 'bg-gray-100 text-gray-700';
     }
   };
 
-  const handleEdit = (order: typeof mockOrders[0]) => {
+  const handleEdit = (order: Order) => {
     setSelectedOrder(order);
+    
+   
+    const formattedDate = order.scheduled_date 
+      ? new Date(order.scheduled_date).toISOString().split('T')[0] 
+      : '';
+
     setEditData({
       status: order.status,
-      scheduled_date: order.scheduled_date || '',
+      scheduled_date: formattedDate,
       work_hours: order.work_hours?.toString() || '',
       hourly_rate: order.hourly_rate?.toString() || '',
       transport_km: order.transport_km?.toString() || '',
@@ -98,42 +116,54 @@ export default function AdminOrders() {
     setIsEditMode(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedOrder) return;
+    setIsSaving(true);
 
-    const updatedOrder = {
-      ...selectedOrder,
-      status: editData.status as typeof selectedOrder.status,
-      scheduled_date: editData.scheduled_date || undefined,
-      work_hours: editData.work_hours ? parseFloat(editData.work_hours) : undefined,
-      hourly_rate: editData.hourly_rate ? parseFloat(editData.hourly_rate) : undefined,
-      transport_km: editData.transport_km ? parseFloat(editData.transport_km) : undefined,
-      transport_rate: editData.transport_rate ? parseFloat(editData.transport_rate) : undefined,
-      materials_cost: editData.materials_cost ? parseFloat(editData.materials_cost) : undefined,
+    
+    const workCost = (parseFloat(editData.work_hours) || 0) * (parseFloat(editData.hourly_rate) || 0);
+    const transportCost = (parseFloat(editData.transport_km) || 0) * (parseFloat(editData.transport_rate) || 0);
+    const materialsCost = parseFloat(editData.materials_cost) || 0;
+    const totalAmount = workCost + transportCost + materialsCost;
+
+    const updatedOrderData = {
+      status: editData.status,
+      scheduled_date: editData.scheduled_date || null,
+      work_hours: editData.work_hours ? parseFloat(editData.work_hours) : null,
+      hourly_rate: editData.hourly_rate ? parseFloat(editData.hourly_rate) : null,
+      transport_km: editData.transport_km ? parseFloat(editData.transport_km) : null,
+      transport_rate: editData.transport_rate ? parseFloat(editData.transport_rate) : null,
+      materials_cost: editData.materials_cost ? parseFloat(editData.materials_cost) : null,
       manager_notes: editData.manager_notes,
+      total_amount: totalAmount > 0 ? totalAmount : null,
     };
 
-    // Calculate total
-    const workCost = (updatedOrder.work_hours || 0) * (updatedOrder.hourly_rate || 0);
-    const transportCost = (updatedOrder.transport_km || 0) * (updatedOrder.transport_rate || 0);
-    const materialsCost = updatedOrder.materials_cost || 0;
-    updatedOrder.total_amount = workCost + transportCost + materialsCost;
+    try {
+      const response = await fetch(`http://localhost:5000/api/orders/${selectedOrder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedOrderData),
+      });
 
-    const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-    setOrders(updatedOrders);
-    
-    // Update mock data
-    const orderIndex = mockOrders.findIndex(o => o.id === updatedOrder.id);
-    if (orderIndex >= 0) {
-      mockOrders[orderIndex] = updatedOrder;
+      if (!response.ok) throw new Error('Помилка оновлення');
+
+      const updatedOrder = await response.json();
+
+     
+      setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+      
+      toast.success('Замовлення успішно оновлено!');
+      setIsEditMode(false);
+      setSelectedOrder(null);
+    } catch (error) {
+      console.error(error);
+      toast.error('Не вдалося зберегти зміни');
+    } finally {
+      setIsSaving(false);
     }
-
-    toast.success('Замовлення оновлено!');
-    setIsEditMode(false);
-    setSelectedOrder(null);
   };
 
-  const OrderCard = ({ order }: { order: typeof mockOrders[0] }) => (
+  const OrderCard = ({ order }: { order: Order }) => (
     <div 
       className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
       onClick={() => setSelectedOrder(order)}
@@ -158,7 +188,7 @@ export default function AdminOrders() {
       </div>
       <div className="text-right">
         {order.total_amount ? (
-          <p className="font-bold text-gray-900">{order.total_amount.toLocaleString()} ₴</p>
+          <p className="font-bold text-gray-900">{Number(order.total_amount).toLocaleString()} ₴</p>
         ) : (
           <p className="text-sm text-gray-500">Очікує оцінки</p>
         )}
@@ -168,6 +198,14 @@ export default function AdminOrders() {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -180,91 +218,48 @@ export default function AdminOrders() {
 
       <Tabs defaultValue="new" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="new">
-            Нові ({newOrders.length})
-          </TabsTrigger>
-          <TabsTrigger value="scheduled">
-            Заплановані ({scheduledOrders.length})
-          </TabsTrigger>
-          <TabsTrigger value="in_progress">
-            В роботі ({inProgressOrders.length})
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Завершені ({completedOrders.length})
-          </TabsTrigger>
+          <TabsTrigger value="new">Нові ({newOrders.length})</TabsTrigger>
+          <TabsTrigger value="scheduled">Заплановані ({scheduledOrders.length})</TabsTrigger>
+          <TabsTrigger value="in_progress">В роботі ({inProgressOrders.length})</TabsTrigger>
+          <TabsTrigger value="completed">Завершені ({completedOrders.length})</TabsTrigger>
         </TabsList>
 
+        {/* ... Tab Contents ... */}
         <TabsContent value="new" className="space-y-4">
           {newOrders.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <CheckCircle className="h-12 w-12 text-green-300 mx-auto mb-4" />
-                <p className="text-gray-500">Немає нових замовлень</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-8 text-center"><p className="text-gray-500">Немає нових замовлень</p></CardContent></Card>
           ) : (
-            <div className="space-y-4">
-              {newOrders.map((order) => (
-                <OrderCard key={order.id} order={order} />
-              ))}
-            </div>
+            <div className="space-y-4">{newOrders.map((order) => <OrderCard key={order.id} order={order} />)}</div>
           )}
         </TabsContent>
 
         <TabsContent value="scheduled" className="space-y-4">
           {scheduledOrders.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Немає запланованих замовлень</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-8 text-center"><p className="text-gray-500">Немає запланованих замовлень</p></CardContent></Card>
           ) : (
-            <div className="space-y-4">
-              {scheduledOrders.map((order) => (
-                <OrderCard key={order.id} order={order} />
-              ))}
-            </div>
+            <div className="space-y-4">{scheduledOrders.map((order) => <OrderCard key={order.id} order={order} />)}</div>
           )}
         </TabsContent>
 
         <TabsContent value="in_progress" className="space-y-4">
           {inProgressOrders.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Clock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Немає замовлень в роботі</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-8 text-center"><p className="text-gray-500">Немає замовлень в роботі</p></CardContent></Card>
           ) : (
-            <div className="space-y-4">
-              {inProgressOrders.map((order) => (
-                <OrderCard key={order.id} order={order} />
-              ))}
-            </div>
+            <div className="space-y-4">{inProgressOrders.map((order) => <OrderCard key={order.id} order={order} />)}</div>
           )}
         </TabsContent>
 
         <TabsContent value="completed" className="space-y-4">
           {completedOrders.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <CheckCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Ще немає завершених замовлень</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="p-8 text-center"><p className="text-gray-500">Ще немає завершених замовлень</p></CardContent></Card>
           ) : (
-            <div className="space-y-4">
-              {completedOrders.map((order) => (
-                <OrderCard key={order.id} order={order} />
-              ))}
-            </div>
+            <div className="space-y-4">{completedOrders.map((order) => <OrderCard key={order.id} order={order} />)}</div>
           )}
         </TabsContent>
       </Tabs>
 
-      {/* Order Detail / Edit Dialog */}
-      <Dialog open={!!selectedOrder} onOpenChange={() => { setSelectedOrder(null); setIsEditMode(false); }}>
+      {/* Dialog for details and editing */}
+      <Dialog open={!!selectedOrder} onOpenChange={(open) => { if(!open) { setSelectedOrder(null); setIsEditMode(false); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedOrder && !isEditMode && (
             <>
@@ -329,27 +324,21 @@ export default function AdminOrders() {
                           <span>{selectedOrder.work_hours} год × {selectedOrder.hourly_rate} ₴</span>
                         </div>
                       )}
-                      {selectedOrder.work_hours && selectedOrder.hourly_rate && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500 pl-4">Вартість роботи</span>
-                          <span>{(selectedOrder.work_hours * selectedOrder.hourly_rate).toLocaleString()} ₴</span>
-                        </div>
-                      )}
                       {selectedOrder.transport_km && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Транспорт</span>
                           <span>{selectedOrder.transport_km} км × {selectedOrder.transport_rate} ₴</span>
                         </div>
                       )}
-                      {selectedOrder.materials_cost && selectedOrder.materials_cost > 0 && (
+                      {selectedOrder.materials_cost && Number(selectedOrder.materials_cost) > 0 && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Матеріали</span>
-                          <span>{selectedOrder.materials_cost.toLocaleString()} ₴</span>
+                          <span>{Number(selectedOrder.materials_cost).toLocaleString()} ₴</span>
                         </div>
                       )}
                       <div className="flex justify-between font-bold text-lg pt-2 border-t">
                         <span>ВСЬОГО</span>
-                        <span className="text-green-600">{selectedOrder.total_amount.toLocaleString()} ₴</span>
+                        <span className="text-green-600">{Number(selectedOrder.total_amount).toLocaleString()} ₴</span>
                       </div>
                     </div>
                   </div>
@@ -405,7 +394,7 @@ export default function AdminOrders() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Годин роботи</Label>
+                    <Label>Загальна кількість годин (орієнтовно)</Label>
                     <Input
                       type="number"
                       step="0.5"
@@ -467,14 +456,17 @@ export default function AdminOrders() {
                     variant="outline"
                     onClick={() => setIsEditMode(false)}
                     className="flex-1"
+                    disabled={isSaving}
                   >
                     Скасувати
                   </Button>
                   <Button 
                     onClick={handleSave}
                     className="flex-1 bg-green-600 hover:bg-green-700"
+                    disabled={isSaving}
                   >
-                    Зберегти
+                    {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    {isSaving ? 'Збереження...' : 'Зберегти'}
                   </Button>
                 </div>
               </div>

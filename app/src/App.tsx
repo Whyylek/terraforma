@@ -3,24 +3,24 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 
-// Layout Components
+
 import Navbar from '@/components/Navbar';
 
-// Public Pages
+
 import HomePage from '@/pages/HomePage';
 import ServicesPage from '@/pages/ServicesPage';
 import PortfolioPage from '@/pages/PortfolioPage';
 
-// Auth Pages
+
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 
-// Dashboard Pages
+
 import ClientDashboard from '@/pages/client/ClientDashboard';
 import WorkerDashboard from '@/pages/worker/WorkerDashboard';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 
-// Protected Route Component
+
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, isLoading } = useAuth();
 

@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { mockOrders } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,38 +12,51 @@ import { toast } from 'sonner';
 
 export default function ClientNewOrder() {
   const navigate = useNavigate();
+  const location = useLocation(); 
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  
+ 
   const [formData, setFormData] = useState({
-    description: '',
+    description: location.state?.prefill || '', 
     address: '',
   });
+
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Create new order
-    const newOrder = {
-      id: `ORD-${String(mockOrders.length + 1).padStart(3, '0')}`,
+    const newOrderData = {
       client_id: user?.id || '',
       client_name: user?.name || '',
       client_phone: user?.phone || '',
       client_email: user?.email || '',
-      status: 'new' as const,
       description: formData.description,
       address: formData.address,
-      created_at: new Date().toISOString(),
     };
 
-    mockOrders.push(newOrder);
-    setIsSubmitting(false);
-    setIsSuccess(true);
-    toast.success('Замовлення успішно створено!');
+    try {
+      const response = await fetch('http://localhost:5000/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newOrderData),
+      });
+
+      if (!response.ok) throw new Error('Помилка сервера');
+
+      setIsSuccess(true);
+      toast.success('Замовлення успішно створено!');
+    } catch (error) {
+      console.error('Помилка при створенні замовлення:', error);
+      toast.error('Не вдалося створити замовлення. Спробуйте пізніше.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {
@@ -102,7 +114,7 @@ export default function ClientNewOrder() {
               </Label>
               <Textarea
                 id="description"
-                placeholder="Опишіть детально, які роботи потрібно виконати. Наприклад: покіс трави на ділянці 10 соток, стрижка живоплоту..."
+                placeholder="Опишіть детально, які роботи потрібно виконати..."
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 required

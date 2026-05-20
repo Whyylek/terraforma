@@ -1,20 +1,43 @@
-import { useState } from 'react';
-import { mockServices } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, ShoppingCart, Filter } from 'lucide-react';
+import { Search, ShoppingCart, Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Service } from '@/types';
 
 export default function ServicesPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [servicesData, setServicesData] = useState<Service[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const categories = ['all', ...Array.from(new Set(mockServices.map(s => s.category)))];
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/services');
+        if (!response.ok) throw new Error('Помилка при завантаженні даних');
+        setServicesData(await response.json());
+      } catch (error) {
+        console.error(error);
+        toast.error('Не вдалося завантажити список послуг');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchServices();
+  }, []);
 
-  const filteredServices = mockServices.filter(service => {
+  const categories = ['all', ...Array.from(new Set(servicesData.map(s => s.category)))];
+
+  const filteredServices = servicesData.filter(service => {
     const matchesSearch = service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         service.description.toLowerCase().includes(searchQuery.toLowerCase());
+                         (service.description && service.description.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesCategory = selectedCategory === 'all' || service.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -22,8 +45,20 @@ export default function ServicesPage() {
   const services = filteredServices.filter(s => s.type === 'service');
   const products = filteredServices.filter(s => s.type === 'product');
 
+  
   const handleOrder = (serviceName: string) => {
-    toast.info(`Щоб замовити "${serviceName}", будь ласка, увійдіть або зареєструйтесь як клієнт`);
+    if (!user) {
+      toast.info('Щоб зробити замовлення, будь ласка, увійдіть в систему');
+      navigate('/login');
+      return;
+    }
+    
+    if (user.role === 'client') {
+    
+      navigate('/client/orders/new', { state: { prefill: `Бажаємо замовити: ${serviceName}. \nУточніть деталі: ` } });
+    } else {
+      toast.error('Тільки клієнти можуть створювати замовлення');
+    }
   };
 
   return (
@@ -69,98 +104,78 @@ export default function ServicesPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="services" className="space-y-8">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="services">Послуги</TabsTrigger>
-            <TabsTrigger value="products">Рослини</TabsTrigger>
-          </TabsList>
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+             <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+          </div>
+        ) : (
+          <Tabs defaultValue="services" className="space-y-8">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="services">Послуги</TabsTrigger>
+              <TabsTrigger value="products">Рослини</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="services" className="space-y-6">
-            {services.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500">Послуг не знайдено</p>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {services.map((service) => (
-                  <div key={service.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-                    <div className="h-56 overflow-hidden">
-                      <img 
-                        src={service.image} 
-                        alt={service.name} 
-                        className="w-full h-full object-cover hover:scale-105 transition-transform"
-                      />
-                    </div>
-                    <div className="p-6">
-                      <span className="text-xs font-medium text-green-600 uppercase tracking-wide">
-                        {service.category}
-                      </span>
-                      <h3 className="text-xl font-semibold text-gray-900 mt-2 mb-3">{service.name}</h3>
-                      <p className="text-gray-600 mb-4">{service.description}</p>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-2xl font-bold text-green-600">{service.price}</span>
-                          <span className="text-gray-500 ml-1">₴/{service.unit}</span>
+            <TabsContent value="services" className="space-y-6">
+              {services.length === 0 ? (
+                <div className="text-center py-12"><p className="text-gray-500">Послуг не знайдено</p></div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {services.map((service) => (
+                    <div key={service.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
+                      <div className="h-56 overflow-hidden">
+                        <img src={service.image} alt={service.name} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                      </div>
+                      <div className="p-6">
+                        <span className="text-xs font-medium text-green-600 uppercase tracking-wide">{service.category}</span>
+                        <h3 className="text-xl font-semibold text-gray-900 mt-2 mb-3">{service.name}</h3>
+                        <p className="text-gray-600 mb-4">{service.description}</p>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-2xl font-bold text-green-600">{service.price}</span>
+                            <span className="text-gray-500 ml-1">₴/{service.unit}</span>
+                          </div>
+                          <Button onClick={() => handleOrder(service.name)} className="bg-green-600 hover:bg-green-700">
+                            <ShoppingCart className="h-4 w-4 mr-2" /> Замовити
+                          </Button>
                         </div>
-                        <Button 
-                          onClick={() => handleOrder(service.name)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          <ShoppingCart className="h-4 w-4 mr-2" />
-                          Замовити
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
 
-          <TabsContent value="products" className="space-y-6">
-            {products.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500">Товарів не знайдено</p>
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {products.map((product) => (
-                  <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
-                    <div className="h-56 overflow-hidden">
-                      <img 
-                        src={product.image} 
-                        alt={product.name} 
-                        className="w-full h-full object-cover hover:scale-105 transition-transform"
-                      />
-                    </div>
-                    <div className="p-6">
-                      <span className="text-xs font-medium text-green-600 uppercase tracking-wide">
-                        {product.category}
-                      </span>
-                      <h3 className="text-xl font-semibold text-gray-900 mt-2 mb-3">{product.name}</h3>
-                      <p className="text-gray-600 mb-4">{product.description}</p>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-2xl font-bold text-green-600">{product.price}</span>
-                          <span className="text-gray-500 ml-1">₴/{product.unit}</span>
+            <TabsContent value="products" className="space-y-6">
+              {products.length === 0 ? (
+                <div className="text-center py-12"><p className="text-gray-500">Товарів не знайдено</p></div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {products.map((product) => (
+                    <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
+                      <div className="h-56 overflow-hidden">
+                        <img src={product.image} alt={product.name} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                      </div>
+                      <div className="p-6">
+                        <span className="text-xs font-medium text-green-600 uppercase tracking-wide">{product.category}</span>
+                        <h3 className="text-xl font-semibold text-gray-900 mt-2 mb-3">{product.name}</h3>
+                        <p className="text-gray-600 mb-4">{product.description}</p>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-2xl font-bold text-green-600">{product.price}</span>
+                            <span className="text-gray-500 ml-1">₴/{product.unit}</span>
+                          </div>
+                          <Button onClick={() => handleOrder(product.name)} variant="outline" className="border-green-600 text-green-600 hover:bg-green-50">
+                            <ShoppingCart className="h-4 w-4 mr-2" /> В замовлення
+                          </Button>
                         </div>
-                        <Button 
-                          onClick={() => handleOrder(product.name)}
-                          variant="outline"
-                          className="border-green-600 text-green-600 hover:bg-green-50"
-                        >
-                          <ShoppingCart className="h-4 w-4 mr-2" />
-                          В замовлення
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </div>
   );

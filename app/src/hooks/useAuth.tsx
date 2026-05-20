@@ -1,6 +1,5 @@
 import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
 import type { User, UserRole } from '@/types';
-import { mockUsers, WORKER_SECRET_CODE } from '@/data/mockData';
 
 interface AuthContextType {
   user: User | null;
@@ -26,55 +25,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+   
     const savedUser = localStorage.getItem('greenspace_user');
-    if (savedUser) {
+    const token = localStorage.getItem('greenspace_token');
+    
+    if (savedUser && token) {
       setUser(JSON.parse(savedUser));
     }
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, _password: string): Promise<boolean> => {
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('greenspace_user', JSON.stringify(foundUser));
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (!response.ok) return false;
+
+      const data = await response.json();
+      setUser(data.user);
+      localStorage.setItem('greenspace_user', JSON.stringify(data.user));
+      localStorage.setItem('greenspace_token', data.token); 
       return true;
+    } catch (error) {
+      console.error('Помилка логіну:', error);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('greenspace_user');
+    localStorage.removeItem('greenspace_token');
   };
 
   const register = async (data: RegisterData): Promise<boolean> => {
-    if (data.role === 'worker' && data.secretCode !== WORKER_SECRET_CODE) {
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) return false;
+
+      const responseData = await response.json();
+      setUser(responseData.user);
+      localStorage.setItem('greenspace_user', JSON.stringify(responseData.user));
+      localStorage.setItem('greenspace_token', responseData.token);
+      return true;
+    } catch (error) {
+      console.error('Помилка реєстрації:', error);
       return false;
     }
-
-    if (mockUsers.find(u => u.email === data.email)) {
-      return false;
-    }
-
-    const newUser: User = {
-      id: String(mockUsers.length + 1),
-      email: data.email,
-      name: data.name,
-      phone: data.phone,
-      role: data.role,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.email}`,
-    };
-
-    if (data.role === 'worker') {
-      newUser.salary_hourly_rate = 150;
-      newUser.client_hourly_rate = 300;
-    }
-
-    mockUsers.push(newUser);
-    setUser(newUser);
-    localStorage.setItem('greenspace_user', JSON.stringify(newUser));
-    return true;
   };
 
   return (

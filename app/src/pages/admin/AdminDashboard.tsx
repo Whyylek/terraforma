@@ -8,7 +8,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-// Admin sub-pages
+
 import AdminOverview from './AdminOverview';
 import AdminOrders from './AdminOrders';
 import AdminSchedule from './AdminSchedule';

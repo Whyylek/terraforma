@@ -1,5 +1,5 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { mockSchedule } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -7,20 +7,41 @@ import {
   Clock, 
   MapPin,
   CheckCircle,
-  Clock3
+  Clock3,
+  Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
+import type { Schedule } from '@/types';
 
 export default function WorkerSchedule() {
   const { user } = useAuth();
   
-  const workerSchedule = mockSchedule.filter(s => s.worker_id === user?.id);
+  const [workerSchedule, setWorkerSchedule] = useState<Schedule[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (!user?.id) return;
+      try {
+        const response = await fetch(`http://localhost:5000/api/schedules/worker/${user.id}`);
+        if (!response.ok) throw new Error('Помилка завантаження');
+        setWorkerSchedule(await response.json());
+      } catch (error) {
+        console.error(error);
+        toast.error('Не вдалося завантажити розклад');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchSchedule();
+  }, [user?.id]);
   
-  // Group by status
+  
   const upcoming = workerSchedule.filter(s => s.status === 'planned').sort((a, b) => a.date.localeCompare(b.date));
   const inProgress = workerSchedule.filter(s => s.status === 'in_progress');
   const completed = workerSchedule.filter(s => s.status === 'completed').sort((a, b) => b.date.localeCompare(a.date));
 
-  const ScheduleCard = ({ schedule }: { schedule: typeof mockSchedule[0] }) => (
+  const ScheduleCard = ({ schedule }: { schedule: Schedule }) => (
     <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
       <div className="flex items-start justify-between">
         <div className="space-y-2">
@@ -61,7 +82,7 @@ export default function WorkerSchedule() {
             <div className="mt-3">
               <p className="text-xs text-gray-500 mb-1">Інструменти:</p>
               <div className="flex flex-wrap gap-1">
-                {schedule.tools_needed.map((tool, idx) => (
+                {schedule.tools_needed.map((tool: string, idx: number) => (
                   <span key={idx} className="bg-white px-2 py-1 rounded text-xs text-gray-700 border">
                     {tool}
                   </span>
@@ -73,6 +94,14 @@ export default function WorkerSchedule() {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

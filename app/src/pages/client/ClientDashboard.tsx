@@ -9,13 +9,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Client sub-pages
+
 import ClientOverview from './ClientOverview';
 import ClientOrders from './ClientOrders';
 import ClientCalendar from './ClientCalendar';
 import ClientInvoices from './ClientInvoices';
 import ClientNewOrder from './ClientNewOrder';
-import AIAssistant from '@/components/AIAssistant';
+
 
 const sidebarItems = [
   { path: '/client', label: 'Огляд', icon: LayoutDashboard },
@@ -92,8 +92,7 @@ export default function ClientDashboard() {
         </div>
       </div>
 
-      {/* AI Assistant */}
-      <AIAssistant />
+      
     </div>
   );
 }

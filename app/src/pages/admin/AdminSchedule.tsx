@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { mockSchedule, mockOrders, mockUsers } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,16 +6,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Plus
-} from 'lucide-react';
+import { Calendar, Clock, MapPin, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Schedule, Order, User } from '@/types';
 
 export default function AdminSchedule() {
-  const [schedule, setSchedule] = useState(mockSchedule);
+  const [schedule, setSchedule] = useState<Schedule[]>([]);
+  const [workers, setWorkers] = useState<User[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newSchedule, setNewSchedule] = useState({
     order_id: '',
@@ -26,28 +26,60 @@ export default function AdminSchedule() {
     notes: '',
   });
 
-  const workers = mockUsers.filter(u => u.role === 'worker');
-  const orders = mockOrders.filter(o => o.status === 'new' || o.status === 'scheduled');
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [scheduleRes, workersRes, ordersRes] = await Promise.all([
+          fetch('http://localhost:5000/api/schedules'),
+          fetch('http://localhost:5000/api/workers'),
+          fetch('http://localhost:5000/api/orders')
+        ]);
 
-  // Group schedule by date
+        if (!scheduleRes.ok || !workersRes.ok || !ordersRes.ok) {
+          throw new Error('Помилка завантаження даних');
+        }
+
+        const scheduleData = await scheduleRes.json();
+        const workersData = await workersRes.json();
+        const ordersData = await ordersRes.json();
+
+        setSchedule(scheduleData);
+        setWorkers(workersData);
+        
+        setOrders(ordersData.filter((o: Order) => o.status === 'new' || o.status === 'scheduled'));
+      } catch (error) {
+        console.error(error);
+        toast.error('Не вдалося завантажити дані розкладу');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+ 
   const scheduleByDate = schedule.reduce((acc, item) => {
-    if (!acc[item.date]) {
-      acc[item.date] = [];
+   
+    const dateStr = item.date.split('T')[0];
+    if (!acc[dateStr]) {
+      acc[dateStr] = [];
     }
-    acc[item.date].push(item);
+    acc[dateStr].push(item);
     return acc;
-  }, {} as Record<string, typeof mockSchedule>);
+  }, {} as Record<string, Schedule[]>);
 
   const sortedDates = Object.keys(scheduleByDate).sort();
 
-  const handleAddSchedule = () => {
+  const handleAddSchedule = async () => {
     const order = orders.find(o => o.id === newSchedule.order_id);
     const worker = workers.find(w => w.id === newSchedule.worker_id);
     
     if (!order || !worker) return;
+    setIsAdding(true);
 
-    const newItem = {
-      id: `SCH-${String(schedule.length + 1).padStart(3, '0')}`,
+    const payload = {
       order_id: newSchedule.order_id,
       worker_id: newSchedule.worker_id,
       worker_name: worker.name,
@@ -55,28 +87,31 @@ export default function AdminSchedule() {
       start_time: newSchedule.start_time,
       address: order.address,
       notes: newSchedule.notes,
-      status: 'planned' as const,
     };
 
-    mockSchedule.push(newItem);
-    setSchedule([...mockSchedule]);
-    
-    // Update order status
-    const orderIndex = mockOrders.findIndex(o => o.id === newSchedule.order_id);
-    if (orderIndex >= 0 && mockOrders[orderIndex].status === 'new') {
-      mockOrders[orderIndex].status = 'scheduled';
-      mockOrders[orderIndex].scheduled_date = newSchedule.date;
-    }
+    try {
+      const response = await fetch('http://localhost:5000/api/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-    toast.success('Зміну додано до розкладу!');
-    setIsAddDialogOpen(false);
-    setNewSchedule({
-      order_id: '',
-      worker_id: '',
-      date: '',
-      start_time: '08:00',
-      notes: '',
-    });
+      if (!response.ok) throw new Error('Помилка при збереженні');
+
+      const createdSchedule = await response.json();
+      
+  
+      setSchedule([...schedule, createdSchedule]);
+      
+      toast.success('Зміну додано до розкладу!');
+      setIsAddDialogOpen(false);
+      setNewSchedule({ order_id: '', worker_id: '', date: '', start_time: '08:00', notes: '' });
+    } catch (error) {
+      console.error(error);
+      toast.error('Не вдалося додати зміну');
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -91,6 +126,14 @@ export default function AdminSchedule() {
         return null;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-purple-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -276,15 +319,17 @@ export default function AdminSchedule() {
                 variant="outline"
                 onClick={() => setIsAddDialogOpen(false)}
                 className="flex-1"
+                disabled={isAdding}
               >
                 Скасувати
               </Button>
               <Button 
                 onClick={handleAddSchedule}
                 className="flex-1 bg-purple-600 hover:bg-purple-700"
-                disabled={!newSchedule.order_id || !newSchedule.worker_id || !newSchedule.date}
+                disabled={!newSchedule.order_id || !newSchedule.worker_id || !newSchedule.date || isAdding}
               >
-                Додати
+                {isAdding ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                {isAdding ? 'Додаємо...' : 'Додати'}
               </Button>
             </div>
           </div>

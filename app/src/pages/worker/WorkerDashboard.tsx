@@ -7,7 +7,7 @@ import {
   Wallet
 } from 'lucide-react';
 
-// Worker sub-pages
+
 import WorkerOverview from './WorkerOverview';
 import WorkerSchedule from './WorkerSchedule';
 import WorkerReports from './WorkerReports';

@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { mockSchedule, mockWorkLogs } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,63 +13,107 @@ import {
   CheckCircle,
   Calendar,
   Send,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Schedule, WorkLog } from '@/types';
 
 export default function WorkerReports() {
   const { user } = useAuth();
-  const [selectedSchedule, setSelectedSchedule] = useState<typeof mockSchedule[0] | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [reportData, setReportData] = useState({
     actual_hours: '',
     km_driven: '',
     notes: '',
   });
 
-  const workerSchedule = mockSchedule.filter(s => s.worker_id === user?.id);
-  const workerLogs = mockWorkLogs.filter(l => l.worker_id === user?.id);
+  const [workerSchedule, setWorkerSchedule] = useState<Schedule[]>([]);
+  const [workerLogs, setWorkerLogs] = useState<WorkLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchData();
+  }, [user?.id]);
+
+  const fetchData = async () => {
+    if (!user?.id) return;
+    try {
+      const [schedulesRes, logsRes] = await Promise.all([
+        fetch(`http://localhost:5000/api/schedules/worker/${user.id}`),
+        fetch(`http://localhost:5000/api/work-logs/worker/${user.id}`)
+      ]);
+
+      if (!schedulesRes.ok || !logsRes.ok) throw new Error('Помилка завантаження даних');
+
+      setWorkerSchedule(await schedulesRes.json());
+      setWorkerLogs(await logsRes.json());
+    } catch (error) {
+      console.error(error);
+      toast.error('Не вдалося завантажити дані');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   
-  // Get schedules that need reports (completed but no report yet)
-  const pendingReports = workerSchedule.filter(s => {
-    const hasReport = workerLogs.some(l => l.schedule_id === s.id);
-    return s.status === 'completed' && !hasReport;
-  });
+  const pendingReports = workerSchedule.filter(s => s.status !== 'completed');
+  const submittedReports = workerLogs;
 
-  const submittedReports = workerLogs.sort((a, b) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  const handleSubmitReport = (e: React.FormEvent) => {
+  const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSchedule) return;
+    if (!selectedSchedule || !user?.id) return;
+    setIsSubmitting(true);
 
-    // Create new work log
-    const newLog = {
-      id: `WL-${String(mockWorkLogs.length + 1).padStart(3, '0')}`,
+    const payload = {
       schedule_id: selectedSchedule.id,
-      worker_id: user?.id || '',
+      worker_id: user.id,
       order_id: selectedSchedule.order_id,
       date: selectedSchedule.date,
       actual_hours: parseFloat(reportData.actual_hours),
       km_driven: parseFloat(reportData.km_driven),
       notes: reportData.notes,
-      submitted_at: new Date().toISOString(),
     };
 
-    mockWorkLogs.push(newLog);
-    toast.success('Звіт успішно подано!');
-    setSelectedSchedule(null);
-    setReportData({ actual_hours: '', km_driven: '', notes: '' });
+    try {
+      const response = await fetch('http://localhost:5000/api/work-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error('Помилка сервера');
+
+      toast.success('Звіт успішно подано!');
+      setSelectedSchedule(null);
+      setReportData({ actual_hours: '', km_driven: '', notes: '' });
+      
+      
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      toast.error('Не вдалося подати звіт');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Звіти</h1>
-        <p className="text-gray-600">Подавайте звіти про виконану роботу</p>
+        <p className="text-gray-600">Кожен працівник подає звіт про власні відпрацьовані години</p>
       </div>
 
-      {/* Pending Reports */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -98,9 +141,7 @@ export default function WorkerReports() {
                     <div>
                       <p className="font-medium text-gray-900">
                         {new Date(schedule.date).toLocaleDateString('uk-UA', { 
-                          weekday: 'long', 
-                          day: 'numeric', 
-                          month: 'long' 
+                          weekday: 'long', day: 'numeric', month: 'long' 
                         })}
                       </p>
                       <div className="flex items-center text-sm text-gray-600 mt-1">
@@ -126,7 +167,6 @@ export default function WorkerReports() {
         </CardContent>
       </Card>
 
-      {/* Report Form Dialog */}
       {selectedSchedule && (
         <Card className="border-green-200">
           <CardHeader>
@@ -135,25 +175,22 @@ export default function WorkerReports() {
           <CardContent>
             <form onSubmit={handleSubmitReport} className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                <p className="font-medium text-gray-900">{selectedSchedule.id}</p>
+                <p className="font-medium text-gray-900">Зміна {selectedSchedule.id}</p>
                 <p className="text-sm text-gray-600">{selectedSchedule.address}</p>
-                <p className="text-sm text-gray-500">
-                  {new Date(selectedSchedule.date).toLocaleDateString('uk-UA')}
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="actual_hours">
                     <Clock className="h-4 w-4 inline mr-1" />
-                    Фактично годин
+                    Ваші відпрацьовані години
                   </Label>
                   <Input
                     id="actual_hours"
                     type="number"
                     step="0.5"
                     min="0"
-                    placeholder="8"
+                    placeholder="Наприклад: 8"
                     value={reportData.actual_hours}
                     onChange={(e) => setReportData({ ...reportData, actual_hours: e.target.value })}
                     required
@@ -170,7 +207,7 @@ export default function WorkerReports() {
                     type="number"
                     step="0.1"
                     min="0"
-                    placeholder="25"
+                    placeholder="Наприклад: 25"
                     value={reportData.km_driven}
                     onChange={(e) => setReportData({ ...reportData, km_driven: e.target.value })}
                     required
@@ -179,10 +216,10 @@ export default function WorkerReports() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="notes">Нотатки</Label>
+                <Label htmlFor="notes">Нотатки щодо виконаної роботи</Label>
                 <Textarea
                   id="notes"
-                  placeholder="Опишіть виконану роботу..."
+                  placeholder="Опишіть, що було зроблено..."
                   value={reportData.notes}
                   onChange={(e) => setReportData({ ...reportData, notes: e.target.value })}
                   rows={3}
@@ -195,14 +232,16 @@ export default function WorkerReports() {
                   variant="outline"
                   onClick={() => setSelectedSchedule(null)}
                   className="flex-1"
+                  disabled={isSubmitting}
                 >
                   Скасувати
                 </Button>
                 <Button 
                   type="submit" 
                   className="flex-1 bg-green-600 hover:bg-green-700"
+                  disabled={isSubmitting}
                 >
-                  <Send className="h-4 w-4 mr-2" />
+                  {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
                   Подати звіт
                 </Button>
               </div>
@@ -211,7 +250,6 @@ export default function WorkerReports() {
         </Card>
       )}
 
-      {/* Submitted Reports */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -239,9 +277,7 @@ export default function WorkerReports() {
                     <div>
                       <p className="font-medium text-gray-900">
                         {new Date(log.date).toLocaleDateString('uk-UA', { 
-                          weekday: 'long', 
-                          day: 'numeric', 
-                          month: 'long' 
+                          weekday: 'long', day: 'numeric', month: 'long' 
                         })}
                       </p>
                       <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">

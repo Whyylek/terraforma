@@ -1,5 +1,5 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { mockOrders } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -9,66 +9,87 @@ import {
   ArrowRight,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import type { Order } from '@/types';
+import { toast } from 'sonner';
 
 export default function ClientOverview() {
   const { user } = useAuth();
-  const userOrders = mockOrders.filter(o => o.client_id === user?.id);
   
-  const activeOrders = userOrders.filter(o => ['new', 'scheduled', 'in_progress'].includes(o.status));
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserOrders = async () => {
+      if (!user?.id) return;
+      try {
+        const response = await fetch(`http://localhost:5000/api/orders/client/${user.id}`);
+        if (!response.ok) throw new Error('Помилка при завантаженні замовлень');
+        
+        const data = await response.json();
+        setUserOrders(data);
+      } catch (error) {
+        console.error('Помилка fetch:', error);
+        toast.error('Не вдалося завантажити статистику');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserOrders();
+  }, [user?.id]);
+  
+  const activeOrders = userOrders.filter(o => ['new', 'scheduled', 'in_progress'].includes(o.status)).length;
   const completedOrders = userOrders.filter(o => o.status === 'completed' || o.status === 'paid');
-  const totalSpent = completedOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const totalSpent = completedOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+
+  const recentOrders = [...userOrders]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'new':
-        return <AlertCircle className="h-5 w-5 text-amber-500" />;
-      case 'scheduled':
-        return <Calendar className="h-5 w-5 text-blue-500" />;
-      case 'in_progress':
-        return <Clock className="h-5 w-5 text-purple-500" />;
+      case 'new': return <AlertCircle className="h-5 w-5 text-amber-500" />;
+      case 'scheduled': return <Calendar className="h-5 w-5 text-blue-500" />;
+      case 'in_progress': return <Clock className="h-5 w-5 text-purple-500" />;
       case 'completed':
-      case 'paid':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      default:
-        return <AlertCircle className="h-5 w-5 text-gray-500" />;
+      case 'paid': return <CheckCircle className="h-5 w-5 text-green-500" />;
+      default: return <AlertCircle className="h-5 w-5 text-gray-500" />;
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'Нове';
-      case 'scheduled':
-        return 'Заплановано';
-      case 'in_progress':
-        return 'В роботі';
-      case 'completed':
-        return 'Виконано';
-      case 'paid':
-        return 'Оплачено';
-      default:
-        return status;
+      case 'new': return 'Нове';
+      case 'scheduled': return 'Заплановано';
+      case 'in_progress': return 'В роботі';
+      case 'completed': return 'Виконано';
+      case 'paid': return 'Оплачено';
+      default: return status;
     }
   };
 
   const getStatusClass = (status: string) => {
     switch (status) {
-      case 'new':
-        return 'bg-amber-100 text-amber-700';
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-700';
-      case 'in_progress':
-        return 'bg-purple-100 text-purple-700';
+      case 'new': return 'bg-amber-100 text-amber-700';
+      case 'scheduled': return 'bg-blue-100 text-blue-700';
+      case 'in_progress': return 'bg-purple-100 text-purple-700';
       case 'completed':
-      case 'paid':
-        return 'bg-green-100 text-green-700';
-      default:
-        return 'bg-gray-100 text-gray-700';
+      case 'paid': return 'bg-green-100 text-green-700';
+      default: return 'bg-gray-100 text-gray-700';
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -99,7 +120,7 @@ export default function ClientOverview() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">Активні замовлення</p>
-                <p className="text-2xl font-bold text-gray-900">{activeOrders.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{activeOrders}</p>
               </div>
               <div className="bg-blue-100 p-3 rounded-lg">
                 <Clock className="h-6 w-6 text-blue-600" />
@@ -149,7 +170,7 @@ export default function ClientOverview() {
           </Link>
         </CardHeader>
         <CardContent>
-          {userOrders.length === 0 ? (
+          {recentOrders.length === 0 ? (
             <div className="text-center py-8">
               <ClipboardList className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">У вас ще немає замовлень</p>
@@ -161,7 +182,7 @@ export default function ClientOverview() {
             </div>
           ) : (
             <div className="space-y-4">
-              {userOrders.slice(0, 3).map((order) => (
+              {recentOrders.map((order) => (
                 <div 
                   key={order.id} 
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
@@ -169,20 +190,25 @@ export default function ClientOverview() {
                   <div className="flex items-start space-x-4">
                     {getStatusIcon(order.status)}
                     <div>
-                      <p className="font-medium text-gray-900">{order.id}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-medium text-gray-900">{order.id}</p>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClass(order.status)}`}>
+                          {getStatusText(order.status)}
+                        </span>
+                      </div>
                       <p className="text-sm text-gray-600 line-clamp-1">{order.description}</p>
                       <p className="text-sm text-gray-500">{order.address}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(order.status)}`}>
-                      {getStatusText(order.status)}
-                    </span>
-                    {order.total_amount && (
-                      <p className="text-sm font-medium text-gray-900 mt-1">
-                        {order.total_amount.toLocaleString()} ₴
-                      </p>
+                    {order.total_amount ? (
+                      <p className="font-bold text-gray-900">{Number(order.total_amount).toLocaleString()} ₴</p>
+                    ) : (
+                      <p className="text-sm text-gray-500">Очікує оцінки</p>
                     )}
+                    <p className="text-xs text-gray-500">
+                      {new Date(order.created_at).toLocaleDateString('uk-UA')}
+                    </p>
                   </div>
                 </div>
               ))}

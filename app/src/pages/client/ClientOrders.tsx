@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { mockOrders } from '@/data/mockData';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,16 +10,42 @@ import {
   MapPin, 
   CheckCircle, 
   Clock, 
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import type { Order } from '@/types';
+import { toast } from 'sonner';
 
 export default function ClientOrders() {
   const { user } = useAuth();
-  const [selectedOrder, setSelectedOrder] = useState<typeof mockOrders[0] | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   
-  const userOrders = mockOrders.filter(o => o.client_id === user?.id);
+
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+ 
+  useEffect(() => {
+    const fetchUserOrders = async () => {
+      if (!user?.id) return;
+      try {
+        const response = await fetch(`http://localhost:5000/api/orders/client/${user.id}`);
+        if (!response.ok) throw new Error('Помилка при завантаженні замовлень');
+        
+        const data = await response.json();
+        setUserOrders(data);
+      } catch (error) {
+        console.error('Помилка fetch:', error);
+        toast.error('Не вдалося завантажити ваші замовлення');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserOrders();
+  }, [user?.id]);
   
   const activeOrders = userOrders.filter(o => ['new', 'scheduled', 'in_progress'].includes(o.status));
   const completedOrders = userOrders.filter(o => o.status === 'completed' || o.status === 'paid');
@@ -74,7 +99,7 @@ export default function ClientOrders() {
     }
   };
 
-  const OrderCard = ({ order }: { order: typeof mockOrders[0] }) => (
+  const OrderCard = ({ order }: { order: Order }) => (
     <div 
       className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors cursor-pointer"
       onClick={() => setSelectedOrder(order)}
@@ -104,7 +129,7 @@ export default function ClientOrders() {
         </div>
         <div className="text-right">
           {order.total_amount ? (
-            <p className="text-lg font-bold text-green-600">{order.total_amount.toLocaleString()} ₴</p>
+            <p className="text-lg font-bold text-green-600">{Number(order.total_amount).toLocaleString()} ₴</p>
           ) : (
             <p className="text-sm text-gray-500">Очікує оцінки</p>
           )}
@@ -112,6 +137,14 @@ export default function ClientOrders() {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-10 w-10 text-green-600 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -264,24 +297,24 @@ export default function ClientOrders() {
                       {selectedOrder.work_hours && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Робота ({selectedOrder.work_hours} год × {selectedOrder.hourly_rate} ₴)</span>
-                          <span>{(selectedOrder.work_hours * (selectedOrder.hourly_rate || 0)).toLocaleString()} ₴</span>
+                          <span>{(Number(selectedOrder.work_hours) * Number(selectedOrder.hourly_rate || 0)).toLocaleString()} ₴</span>
                         </div>
                       )}
                       {selectedOrder.transport_km && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Транспорт ({selectedOrder.transport_km} км × {selectedOrder.transport_rate} ₴)</span>
-                          <span>{(selectedOrder.transport_km * (selectedOrder.transport_rate || 0)).toLocaleString()} ₴</span>
+                          <span>{(Number(selectedOrder.transport_km) * Number(selectedOrder.transport_rate || 0)).toLocaleString()} ₴</span>
                         </div>
                       )}
-                      {selectedOrder.materials_cost && selectedOrder.materials_cost > 0 && (
+                      {selectedOrder.materials_cost && Number(selectedOrder.materials_cost) > 0 && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Матеріали</span>
-                          <span>{selectedOrder.materials_cost.toLocaleString()} ₴</span>
+                          <span>{Number(selectedOrder.materials_cost).toLocaleString()} ₴</span>
                         </div>
                       )}
                       <div className="flex justify-between font-bold text-lg pt-2 border-t">
                         <span>Всього</span>
-                        <span className="text-green-600">{selectedOrder.total_amount.toLocaleString()} ₴</span>
+                        <span className="text-green-600">{Number(selectedOrder.total_amount).toLocaleString()} ₴</span>
                       </div>
                     </div>
                   </div>

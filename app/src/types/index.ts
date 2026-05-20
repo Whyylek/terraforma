@@ -1,7 +1,7 @@
-// User roles
+
 export type UserRole = 'guest' | 'client' | 'worker' | 'admin';
 
-// User interface
+
 export interface User {
   id: string;
   email: string;
@@ -9,14 +9,14 @@ export interface User {
   phone: string;
   role: UserRole;
   avatar?: string;
-  // Worker specific fields
+  
   salary_hourly_rate?: number;
   client_hourly_rate?: number;
-  // Registration
+  
   secret_code?: string;
 }
 
-// Service/Item types
+
 export type ServiceType = 'service' | 'product';
 
 export interface Service {
@@ -30,7 +30,7 @@ export interface Service {
   category: string;
 }
 
-// Order statuses
+
 export type OrderStatus = 'new' | 'scheduled' | 'in_progress' | 'completed' | 'paid' | 'cancelled';
 
 export interface Order {
@@ -45,18 +45,18 @@ export interface Order {
   created_at: string;
   scheduled_date?: string;
   manager_notes?: string;
-  // Financial data
+
   work_hours?: number;
   hourly_rate?: number;
   transport_km?: number;
   transport_rate?: number;
   materials_cost?: number;
   total_amount?: number;
-  // Assigned workers
+ 
   assigned_workers?: string[];
 }
 
-// Schedule/Shift
+
 export interface Schedule {
   id: string;
   order_id: string;
@@ -71,7 +71,7 @@ export interface Schedule {
   status: 'planned' | 'in_progress' | 'completed';
 }
 
-// Work Log (daily report from worker)
+
 export interface WorkLog {
   id: string;
   schedule_id: string;
@@ -84,7 +84,7 @@ export interface WorkLog {
   submitted_at: string;
 }
 
-// Portfolio item
+
 export interface PortfolioItem {
   id: string;
   title: string;
@@ -95,7 +95,7 @@ export interface PortfolioItem {
   services: string[];
 }
 
-// Calendar event
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -106,7 +106,7 @@ export interface CalendarEvent {
   address?: string;
 }
 
-// Chat message for AI assistant
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -114,7 +114,7 @@ export interface ChatMessage {
   timestamp: string;
 }
 
-// Salary calculation for worker
+
 export interface SalaryRecord {
   id: string;
   worker_id: string;
